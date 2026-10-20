@@ -53,7 +53,8 @@ h1{font-size:24px;margin:0;letter-spacing:.04em}
 .classes{flex-direction:column;align-items:stretch}
 .crow{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
 .classes button.today:not([aria-pressed="true"]){border-color:var(--ok)}
-.classes .glabel{font-size:13px;font-weight:700;color:var(--muted);align-self:center;min-width:3em}
+.classes .glabel{font-size:13px;font-weight:700;color:var(--muted);align-self:center;width:7.5em;flex:none}
+@media (max-width:600px){.classes .glabel{width:100%}}
 .tools{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
 .tools .grow{flex:1;min-width:180px}
 .legend{display:flex;gap:12px;font-size:14px;color:var(--muted);flex-wrap:wrap}
@@ -181,6 +182,8 @@ let queue=LS.get('ct-queue',[]);
 let online=false,syncing=false;
 const keep=()=>{LS.set('ct-recs2',{day,map:recs,leaves});LS.set('ct-queue',queue)};
 const byId=()=>{const m={};roster.forEach(s=>m[s.id]=s);return m};
+// 名單排序：英文名 A→Z，沒有英文名的排在後面依中文排
+const nameCmp=(a,b)=>{const ea=/^[A-Za-z]/.test(a.name),eb=/^[A-Za-z]/.test(b.name);return (eb-ea)||a.name.localeCompare(b.name,'zh-Hant',{numeric:true,sensitivity:'base'})};
 const clsOf=s=>s.classes||[s.cls];
 const clsInfo=()=>{const m={};classes.forEach(c=>m[c.name]=c);return m};
 
@@ -241,8 +244,10 @@ function splitName(name){
 function state(id){const r=recs[id]||{};return r.out?'out':r.in?'in':leaves[id]?'leave':'none'}
 function isLate(s){const r=recs[s.id]||{},c=clsInfo()[s.today||clsOf(s)[0]];return !!r.in&&(r.late||(!!c&&!!c.start&&hm(r.in)>c.start))}
 
-const CLS_GROUPS=['MJ','TJ','其他'];
-const clsGroup=n=>/^\s*MJ/i.test(n)?'MJ':/^\s*TJ/i.test(n)?'TJ':'其他';
+// 班級系列：依班名判斷，順序就是顯示順序
+const CLS_RULES=[['MJ班級',/^\s*MJ/i],['TJ班級',/^\s*TJ/i],['國中實力養成班',/實力養成/],['國中菁英班',/菁英/],['BM班級',/^\s*BM/i],['英檢班',/英檢|GEPT/i]];
+const CLS_GROUPS=CLS_RULES.map(r=>r[0]).concat('其他');
+const clsGroup=n=>{const r=CLS_RULES.find(r=>r[1].test(n));return r?r[0]:'其他'};
 const clsCmp=(a,b)=>(CLS_GROUPS.indexOf(clsGroup(a))-CLS_GROUPS.indexOf(clsGroup(b)))||a.localeCompare(b,'zh-Hant',{numeric:true,sensitivity:'base'});
 const hasToday=n=>{const c=clsInfo()[n];return !!(c&&c.days&&c.days.includes('日一二三四五六'[new Date().getDay()]))};
 function classOrder(){return [...new Set(roster.flatMap(clsOf))].sort(clsCmp)}
@@ -264,7 +269,7 @@ function render(){
   document.querySelectorAll('.seg button').forEach(b=>b.setAttribute('aria-pressed',b.dataset.mode===mode));
   $('hint').textContent=HINT[mode];
   const q=$('q').value.trim();
-  const list=roster.filter(s=>q?s.name.includes(q):clsOf(s).includes(cur));
+  const list=roster.filter(s=>q?s.name.includes(q):clsOf(s).includes(cur)).sort(nameCmp);
   const g=$('grid');g.textContent='';
   list.forEach(s=>{
     const r=recs[s.id]||{},st=state(s.id),b=document.createElement('button');

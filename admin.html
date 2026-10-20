@@ -221,7 +221,7 @@ code{font-family:var(--num);font-size:13px;overflow-wrap:anywhere}
     </form>
     <p class="muted">未到提醒依上課日和上課時間計算，沒填的班級不會提醒。</p>
     <div class="row">
-      <label>系列<select id="cfGroup"><option value="">全部</option><option>MJ</option><option>TJ</option><option>其他</option></select></label>
+      <label>系列<select id="cfGroup"><option value="">全部</option><option>MJ班級</option><option>TJ班級</option><option>國中實力養成班</option><option>國中菁英班</option><option>BM班級</option><option>英檢班</option><option>其他</option></select></label>
       <label>上課日<select id="cfDay"><option value="">全部</option><option value="today">今天有課</option><option>一</option><option>二</option><option>三</option><option>四</option><option>五</option><option>六</option><option>日</option><option value="none">未設定上課日</option></select></label>
       <label class="grow">搜尋班級<input id="cfQ" autocomplete="off" placeholder="例如 MJ12"></label>
       <span class="muted" id="cfN" style="align-self:center"></span>
@@ -324,8 +324,10 @@ function fillSelect(el,opts,keep){
   el.innerHTML=opts.map(o=>`<option value="${esc(o[0])}">${esc(o[1])}</option>`).join('');
   if(cur&&opts.some(o=>o[0]===cur))el.value=cur;
 }
-const CLS_GROUPS=['MJ','TJ','其他'];
-const clsGroup=n=>/^\s*MJ/i.test(n)?'MJ':/^\s*TJ/i.test(n)?'TJ':'其他';
+// 班級系列：依班名判斷，順序就是顯示順序
+const CLS_RULES=[['MJ班級',/^\s*MJ/i],['TJ班級',/^\s*TJ/i],['國中實力養成班',/實力養成/],['國中菁英班',/菁英/],['BM班級',/^\s*BM/i],['英檢班',/英檢|GEPT/i]];
+const CLS_GROUPS=CLS_RULES.map(r=>r[0]).concat('其他');
+const clsGroup=n=>{const r=CLS_RULES.find(r=>r[1].test(n));return r?r[0]:'其他'};
 const clsCmp=(a,b)=>(CLS_GROUPS.indexOf(clsGroup(a))-CLS_GROUPS.indexOf(clsGroup(b)))||a.localeCompare(b,'zh-Hant',{numeric:true,sensitivity:'base'});
 // 名單排序：英文名 A→Z，沒有英文名的排在後面依中文排
 const nameCmp=(a,b)=>{const ea=/^[A-Za-z]/.test(a.name),eb=/^[A-Za-z]/.test(b.name);return (eb-ea)||a.name.localeCompare(b.name,'zh-Hant',{numeric:true,sensitivity:'base'})};

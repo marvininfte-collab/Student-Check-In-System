@@ -407,7 +407,7 @@ const dlg=$('dlg');let curCls='';
 // 名單排序：英文名 A→Z，沒有英文名的排在後面依中文排
 const nameCmp=(a,b)=>{const ea=/^[A-Za-z]/.test(a.name),eb=/^[A-Za-z]/.test(b.name);return (eb-ea)||a.name.localeCompare(b.name,'zh-Hant',{numeric:true,sensitivity:'base'})};
 function renderPick(){
-  const grp=n=>/^\s*MJ/i.test(n)?0:/^\s*TJ/i.test(n)?1:2;
+  const R=[/^\s*MJ/i,/^\s*TJ/i,/實力養成/,/菁英/,/^\s*BM/i,/英檢|GEPT/i],grp=n=>{const i=R.findIndex(r=>r.test(n));return i<0?R.length:i};
   const classes=[...new Set(roster.flatMap(s=>s.classes||[s.cls]))].sort((a,b)=>(grp(a)-grp(b))||a.localeCompare(b,'zh-Hant',{numeric:true}));
   if(!classes.includes(curCls))curCls=classes[0]||'';
   const p=$('pick');p.textContent='';
