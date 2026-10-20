@@ -220,6 +220,12 @@ code{font-family:var(--num);font-size:13px;overflow-wrap:anywhere}
       <button type="button" id="clCancel" hidden>取消編輯</button>
     </form>
     <p class="muted">未到提醒依上課日和上課時間計算，沒填的班級不會提醒。</p>
+    <div class="row">
+      <label>系列<select id="cfGroup"><option value="">全部</option><option>MJ</option><option>TJ</option><option>其他</option></select></label>
+      <label>上課日<select id="cfDay"><option value="">全部</option><option value="today">今天有課</option><option>一</option><option>二</option><option>三</option><option>四</option><option>五</option><option>六</option><option>日</option><option value="none">未設定上課日</option></select></label>
+      <label class="grow">搜尋班級<input id="cfQ" autocomplete="off" placeholder="例如 MJ12"></label>
+      <span class="muted" id="cfN" style="align-self:center"></span>
+    </div>
     <div class="bulkbar" id="clBulk" hidden><span id="clSelN"></span>
       <label style="flex-direction:row;align-items:center;gap:6px;color:var(--ink);font-size:14px"><input type="checkbox" id="clWith" style="min-height:0">連同班上的學生一起刪除</label>
       <button class="small danger" id="ckDel">刪除</button><button class="small" id="ckClear">取消選取</button></div>
@@ -321,6 +327,8 @@ function fillSelect(el,opts,keep){
 const CLS_GROUPS=['MJ','TJ','其他'];
 const clsGroup=n=>/^\s*MJ/i.test(n)?'MJ':/^\s*TJ/i.test(n)?'TJ':'其他';
 const clsCmp=(a,b)=>(CLS_GROUPS.indexOf(clsGroup(a))-CLS_GROUPS.indexOf(clsGroup(b)))||a.localeCompare(b,'zh-Hant',{numeric:true,sensitivity:'base'});
+// 名單排序：英文名 A→Z，沒有英文名的排在後面依中文排
+const nameCmp=(a,b)=>{const ea=/^[A-Za-z]/.test(a.name),eb=/^[A-Za-z]/.test(b.name);return (eb-ea)||a.name.localeCompare(b.name,'zh-Hant',{numeric:true,sensitivity:'base'})};
 const classNames=()=>D.classes.map(c=>c.name);
 // 班級下拉選單依 MJ／TJ／其他 分組
 function fillClassSelect(el,lead){
@@ -350,7 +358,7 @@ function renderToday(){
   const wd=weekday(D.date),remind=Number(D.settings['未到提醒分鐘'])||0;
   const f=$('tdCls').value,showAll=$('tdAll').checked;
   let due=0,here=0,gone=0,off=0,miss=0;
-  const rowsHtml=D.students.filter(s=>s.status!=='停用'||rec[s.id]).filter(s=>!f||inCls(s,f)).map(s=>{
+  const rowsHtml=D.students.filter(s=>s.status!=='停用'||rec[s.id]).filter(s=>!f||inCls(s,f)).sort(nameCmp).map(s=>{
     const tc=clsOf(s).map(n=>cmap[n]).find(x=>x&&x.days.includes(wd));
     const r=rec[s.id],c=tc||cmap[clsOf(s)[0]],has=!!tc;
     if(!r&&!has&&!showAll&&!leave.has(s.id))return '';
@@ -378,7 +386,7 @@ $('tdReload').onclick=()=>run('admin.load',{},'已更新');
 /* 學生名單 */
 function renderStudents(){
   const f=$('stFilter').value,q=$('stSearch').value.trim();
-  const list=D.students.filter(s=>(!f||inCls(s,f))&&(!q||s.name.includes(q))).sort((a,b)=>clsCmp(clsOf(a)[0]||'',clsOf(b)[0]||'')||a.name.localeCompare(b.name,'zh-Hant',{numeric:true}));
+  const list=D.students.filter(s=>(!f||inCls(s,f))&&(!q||s.name.includes(q))).sort((a,b)=>clsCmp(clsOf(a)[0]||'',clsOf(b)[0]||'')||nameCmp(a,b));
   for(const id of [...sel])if(!D.students.some(s=>s.id===id))sel.delete(id);
   $('stBody').innerHTML=list.map(s=>`<tr class="${s.status==='停用'?'off':''}${sel.has(s.id)?' sel':''}"><td><input type="checkbox" data-pick="${esc(s.id)}" ${sel.has(s.id)?'checked':''} aria-label="選取 ${esc(s.name)}" style="min-height:0"></td><td>${esc(s.name)}</td><td>${esc(s.cls)}</td>
     <td class="num">${esc(s.id)}</td><td class="num">${esc(s.bind)}</td><td class="num">${s.parents}</td>
@@ -449,18 +457,23 @@ $('clDays').innerHTML=[...DAYS].map(d=>`<label><input type="checkbox" value="${d
 function renderClasses(){
   const n={};D.students.forEach(s=>{if(s.status!=='停用')clsOf(s).forEach(c=>n[c]=(n[c]||0)+1)});
   for(const c of [...csel])if(!D.classes.some(x=>x.name===c))csel.delete(c);
+  const g=$('cfGroup').value,dsel=$('cfDay').value,q=$('cfQ').value.trim().toLowerCase(),wd='日一二三四五六'[new Date().getDay()];
+  shownCls=D.classes.filter(c=>(!g||clsGroup(c.name)===g)&&(!q||c.name.toLowerCase().includes(q))&&
+    (!dsel||(dsel==='today'?c.days.includes(wd):dsel==='none'?!c.days:c.days.includes(dsel))));
+  $('cfN').textContent=shownCls.length===D.classes.length?'共 '+D.classes.length+' 班':'顯示 '+shownCls.length+' / '+D.classes.length+' 班';
   let lastG='';
-  $('clBody').innerHTML=D.classes.map(c=>(clsGroup(c.name)!==lastG?`<tr class="grp"><td colspan="6">${(lastG=clsGroup(c.name))}</td></tr>`:'')+`<tr class="${csel.has(c.name)?'sel':''}"><td><input type="checkbox" data-cpick="${esc(c.name)}" ${csel.has(c.name)?'checked':''} aria-label="選取 ${esc(c.name)}" style="min-height:0"></td><td>${esc(c.name)}</td><td>${esc([...DAYS].filter(d=>c.days.includes(d)).join(' ')||'未設定')}</td>
+  $('clBody').innerHTML=shownCls.map(c=>(clsGroup(c.name)!==lastG?`<tr class="grp"><td colspan="6">${(lastG=clsGroup(c.name))}</td></tr>`:'')+`<tr class="${csel.has(c.name)?'sel':''}"><td><input type="checkbox" data-cpick="${esc(c.name)}" ${csel.has(c.name)?'checked':''} aria-label="選取 ${esc(c.name)}" style="min-height:0"></td><td>${esc(c.name)}</td><td>${esc([...DAYS].filter(d=>c.days.includes(d)).join(' ')||'未設定')}</td>
     <td class="num">${c.start?esc(c.start)+(c.end?' – '+esc(c.end):''):'未設定'}</td><td class="num">${n[c.name]||0}</td>
     <td class="acts"><button class="small" data-edit="${esc(c.name)}">編輯</button><button class="small" data-del="${esc(c.name)}">刪除</button></td></tr>`).join('')
-    ||'<tr><td colspan="6" class="muted">還沒有班級。</td></tr>';
-  const on=D.classes.filter(c=>csel.has(c.name)).length;
-  $('clAll').checked=D.classes.length>0&&on===D.classes.length;$('clAll').indeterminate=on>0&&on<D.classes.length;
+    ||`<tr><td colspan="6" class="muted">${D.classes.length?'沒有符合篩選條件的班級。':'還沒有班級。'}</td></tr>`;
+  const on=shownCls.filter(c=>csel.has(c.name)).length;
+  $('clAll').checked=shownCls.length>0&&on===shownCls.length;$('clAll').indeterminate=on>0&&on<shownCls.length;
   $('clBulk').hidden=!csel.size;$('clSelN').textContent='已選 '+csel.size+' 個班級';
   disarmCls();
 }
-let csel=new Set(),ckTimer=null;
-$('clAll').onchange=e=>{D.classes.forEach(c=>e.target.checked?csel.add(c.name):csel.delete(c.name));renderClasses()};
+let csel=new Set(),ckTimer=null,shownCls=[];
+['cfGroup','cfDay'].forEach(id=>$(id).onchange=renderClasses);$('cfQ').oninput=renderClasses;
+$('clAll').onchange=e=>{shownCls.forEach(c=>e.target.checked?csel.add(c.name):csel.delete(c.name));renderClasses()};
 $('clBody').addEventListener('change',e=>{const n=e.target.dataset.cpick;if(n===undefined)return;e.target.checked?csel.add(n):csel.delete(n);renderClasses()});
 $('ckClear').onclick=()=>{csel.clear();renderClasses()};
 $('clWith').onchange=disarmCls;
@@ -501,7 +514,7 @@ $('clForm').onsubmit=async e=>{
 /* QR 卡片 */
 function renderCards(){
   const f=$('cdCls').value,q=$('cdSearch').value.trim();
-  const list=D.students.filter(s=>s.status!=='停用'&&(!f||inCls(s,f))&&(!q||s.name.includes(q)));
+  const list=D.students.filter(s=>s.status!=='停用'&&(!f||inCls(s,f))&&(!q||s.name.includes(q))).sort((a,b)=>clsCmp(clsOf(a)[0]||'',clsOf(b)[0]||'')||nameCmp(a,b));
   const v=$('cdStyle').value==='v';
   $('cdInfo').textContent=list.length?'共 '+list.length+' 張。列印時紙張選 A4、縮放選「實際大小」或 100%，沿虛線剪下即可，建議護貝成霧面。':'沒有符合的學生。';
   $('cdGrid').innerHTML=list.map(s=>{
