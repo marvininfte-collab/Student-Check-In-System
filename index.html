@@ -92,6 +92,11 @@ dialog::backdrop{background:rgba(0,0,0,.45)}
 .form{display:flex;flex-direction:column;gap:12px}
 .form label{display:flex;flex-direction:column;gap:4px;font-size:14px;color:var(--muted)}
 .err{color:var(--bad);margin:0;min-height:1.5em}
+.voices{display:flex;flex-direction:column;gap:10px;border-top:1px solid var(--line);padding-top:14px;margin-top:4px}
+.voices h2{font-size:18px;margin:0}
+.voices select{font:inherit;color:inherit;border:1px solid var(--line);background:var(--surface);border-radius:10px;padding:10px 12px;min-height:44px;width:100%}
+.vnote{margin:0;font-size:13px;color:var(--muted)}
+dialog{max-height:92vh;overflow:auto}
 .links{margin:0;text-align:center;font-size:15px}
 .links a{color:var(--accent);padding:8px 6px;display:inline-block}
 
@@ -151,6 +156,13 @@ dialog::backdrop{background:rgba(0,0,0,.45)}
     <p class="err" id="setupErr"></p>
     <button class="primary" id="setupSave">連線</button>
     <button type="button" id="setupCancel">取消</button>
+    <div class="voices">
+      <h2>語音</h2>
+      <label>英文名字的聲音<select id="vEn"></select></label>
+      <label>中文的聲音<select id="vZh"></select></label>
+      <button type="button" id="vTest">試聽：Allen，已到班</button>
+      <p class="vnote" id="vNote">選好會自動記住，只影響這台平板。</p>
+    </div>
     <p class="links"><a href="admin.html">開啟後台</a>　<a href="counter.html">櫃檯點名</a></p>
   </form>
 </dialog>
@@ -269,8 +281,11 @@ let voiceOn=LS.get('ck-voice',true);
 function renderVoice(){$('voiceBtn').textContent='語音：'+(voiceOn?'開':'關');$('voiceBtn').setAttribute('aria-pressed',voiceOn)}
 $('voiceBtn').onclick=()=>{voiceOn=!voiceOn;LS.set('ck-voice',voiceOn);renderVoice();if(voiceOn)speak([['語音已開啟','zh']])};
 renderVoice();
+const allVoices=()=>(window.speechSynthesis&&speechSynthesis.getVoices())||[];
+const langOf=v=>(v.lang||'').replace('_','-').toLowerCase();
 function pickVoice(lang){
-  const vs=(window.speechSynthesis&&speechSynthesis.getVoices())||[];
+  const vs=allVoices(),saved=LS.get(lang==='en'?'ck-voice-en':'ck-voice-zh','');
+  if(saved){const v=vs.find(v=>v.voiceURI===saved||v.name===saved);if(v)return v}
   const want=lang==='en'?['en-US','en_US','en-GB','en']:['zh-TW','zh_TW','zh-HK','zh'];
   for(const w of want){const v=vs.find(v=>v.lang&&v.lang.replace('_','-').toLowerCase().startsWith(w.replace('_','-').toLowerCase()));if(v)return v}
   return null;
@@ -289,7 +304,24 @@ function speak(parts){
     });
   }catch(e){}
 }
-if(window.speechSynthesis)speechSynthesis.onvoiceschanged=()=>{};
+// 設定視窗裡的語音選單：列出這台平板有的英文、中文聲音
+function fillVoices(){
+  const vs=allVoices();
+  const fill=(el,key,test)=>{
+    const list=vs.filter(test),saved=LS.get(key,'');
+    el.innerHTML='<option value="">自動選擇</option>'+list.map(v=>`<option value="${v.voiceURI.replace(/"/g,'&quot;')}">${(v.name+'（'+v.lang+'）').replace(/</g,'&lt;')}</option>`).join('');
+    el.value=list.some(v=>v.voiceURI===saved)?saved:'';
+    return list.length;
+  };
+  const ne=fill($('vEn'),'ck-voice-en',v=>langOf(v).startsWith('en'));
+  const nz=fill($('vZh'),'ck-voice-zh',v=>langOf(v).startsWith('zh')||langOf(v).startsWith('cmn')||langOf(v).startsWith('yue'));
+  $('vNote').textContent=!window.speechSynthesis?'這個瀏覽器不支援語音。':
+    (!ne?'這台平板沒有英文語音，請到平板的「文字轉語音」設定下載 English (United States)。':'選好會自動記住，只影響這台平板。')+(ne&&!nz?' 也建議下載中文（台灣）語音。':'');
+}
+if(window.speechSynthesis){speechSynthesis.onvoiceschanged=fillVoices}
+$('vEn').onchange=e=>{LS.set('ck-voice-en',e.target.value);speak([['Allen','en']])};
+$('vZh').onchange=e=>{LS.set('ck-voice-zh',e.target.value);speak([['已到班','zh']])};
+$('vTest').onclick=()=>{const was=voiceOn;voiceOn=true;speak([['Allen','en'],['已到班','zh']]);voiceOn=was};
 function splitName(name){
   const m=String(name).trim().match(/^([A-Za-z][A-Za-z0-9.'’\- ]*?)\s*([\u3400-\u9fff].*)$/);
   return m?[m[1].trim(),m[2].trim()]:(/^[A-Za-z]/.test(name)?[String(name).trim(),'']:['',String(name).trim()]);
@@ -428,7 +460,7 @@ $('dlgClose').onclick=()=>dlg.close();
 const setup=$('setup');
 function openSetup(){
   $('cfgUrl').value=cfg?cfg.url:'';$('cfgPw').value=cfg?cfg.pw:'';$('setupErr').textContent='';
-  $('setupCancel').hidden=!cfg;setup.showModal();
+  $('setupCancel').hidden=!cfg;fillVoices();setup.showModal();
 }
 $('openSetup').onclick=openSetup;
 $('setupCancel').onclick=()=>setup.close();
