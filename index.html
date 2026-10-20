@@ -261,13 +261,13 @@ function show(kind,mark,name,sub,say){
   r.hidden=false;clearTimeout(hideTimer);
   hideTimer=setTimeout(()=>{r.hidden=true},kind==='ok'||kind==='bye'?1500:2200);
   if(kind==='ok')tone([880,1320],.11);else if(kind==='bye')tone([1320,880],.11);else tone([300,240],.15);
-  if(say)setTimeout(()=>speak(say[0],say[1]),230);
+  if(say)setTimeout(()=>speak(say),230);
 }
 
 // 語音：唸出學生的英文名字；沒有英文名就用中文
 let voiceOn=LS.get('ck-voice',true);
 function renderVoice(){$('voiceBtn').textContent='語音：'+(voiceOn?'開':'關');$('voiceBtn').setAttribute('aria-pressed',voiceOn)}
-$('voiceBtn').onclick=()=>{voiceOn=!voiceOn;LS.set('ck-voice',voiceOn);renderVoice();if(voiceOn)speak('Voice on','en')};
+$('voiceBtn').onclick=()=>{voiceOn=!voiceOn;LS.set('ck-voice',voiceOn);renderVoice();if(voiceOn)speak([['語音已開啟','zh']])};
 renderVoice();
 function pickVoice(lang){
   const vs=(window.speechSynthesis&&speechSynthesis.getVoices())||[];
@@ -275,14 +275,18 @@ function pickVoice(lang){
   for(const w of want){const v=vs.find(v=>v.lang&&v.lang.replace('_','-').toLowerCase().startsWith(w.replace('_','-').toLowerCase()));if(v)return v}
   return null;
 }
-function speak(text,lang){
-  if(!voiceOn||!window.speechSynthesis||!text)return;
+// parts：[[文字, 'en'|'zh'], ...]，依序唸出；英文名用英文語音、中文用中文語音
+function speak(parts){
+  if(!voiceOn||!window.speechSynthesis||!parts||!parts.length)return;
   try{
     speechSynthesis.cancel();
-    const u=new SpeechSynthesisUtterance(text);
-    u.lang=lang==='en'?'en-US':'zh-TW';const v=pickVoice(lang);if(v)u.voice=v;
-    u.rate=lang==='en'?0.95:1;u.pitch=1.05;u.volume=1;
-    speechSynthesis.speak(u);
+    parts.forEach(([text,lang])=>{
+      if(!text)return;
+      const u=new SpeechSynthesisUtterance(text);
+      u.lang=lang==='en'?'en-US':'zh-TW';const v=pickVoice(lang);if(v)u.voice=v;
+      u.rate=lang==='en'?0.95:1.05;u.volume=1;
+      speechSynthesis.speak(u);
+    });
   }catch(e){}
 }
 if(window.speechSynthesis)speechSynthesis.onvoiceschanged=()=>{};
@@ -291,20 +295,15 @@ function splitName(name){
   return m?[m[1].trim(),m[2].trim()]:(/^[A-Za-z]/.test(name)?[String(name).trim(),'']:['',String(name).trim()]);
 }
 function sayFor(s,kind){
+  if(kind==='again')return [['重複刷卡','zh']];
   const [en,zh]=splitName(s.name),nm=(en||'').replace(/\.[A-Za-z]$/,'');   // Oliver.L 唸成 Oliver
-  if(nm){
-    if(kind==='in')return ['Hello, '+nm+'!','en'];
-    if(kind==='out')return ['Goodbye, '+nm+'! See you next time!','en'];
-    return [nm+', you are already checked in.','en'];
-  }
-  if(kind==='in')return [zh+'，你好','zh'];
-  if(kind==='out')return [zh+'，再見','zh'];
-  return [zh+'，已經打過卡了','zh'];
+  const who=nm?[nm,'en']:[zh,'zh'];
+  return [who,[kind==='in'?'已到班':'已離班','zh']];
 }
 
 function punch(id,manual){
   const s=students()[id];
-  if(!s){show('bad','無法辨識','這張卡不在名單裡','請找櫃檯老師',['請找櫃檯老師','zh']);return}
+  if(!s){show('bad','無法辨識','這張卡不在名單裡','請找櫃檯老師',[['請找櫃檯老師','zh']]);return}
   const now=Date.now(),r=recs[id]||{};
   let ev=null;
   if(!r.in&&!r.out){
