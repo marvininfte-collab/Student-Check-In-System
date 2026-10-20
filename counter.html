@@ -242,7 +242,9 @@ function splitName(name){
 }
 // 學生目前狀態：none 未到、in 在班、out 已離班、leave 請假
 function state(id){const r=recs[id]||{};return r.out?'out':r.in?'in':leaves[id]?'leave':'none'}
-function isLate(s){const r=recs[s.id]||{},c=clsInfo()[s.today||clsOf(s)[0]];return !!r.in&&(r.late||(!!c&&!!c.start&&hm(r.in)>c.start))}
+const slotOf=(c,day)=>c&&c.days&&c.days.includes(day)?((c.times&&c.times[day])||{start:c.start,end:c.end}):null;
+const WD=()=>'日一二三四五六'[new Date().getDay()];
+function isLate(s){const r=recs[s.id]||{},c=slotOf(clsInfo()[s.today||clsOf(s)[0]],WD());return !!r.in&&(r.late||(!!c&&!!c.start&&hm(r.in)>c.start))}
 
 // 班級系列：依班名判斷，順序就是顯示順序
 const CLS_RULES=[['MJ班級',/^\s*MJ/i],['TJ班級',/^\s*TJ/i],['國中實力養成班',/實力養成/],['國中菁英班',/菁英/],['BM班級',/^\s*BM/i],['英檢班',/英檢|GEPT/i]];
@@ -289,7 +291,8 @@ function render(){
   const late=cl.filter(isLate).length;
   $('summary').innerHTML=`<span><b>${cnt.in}</b>在班</span><span><b>${cnt.out}</b>已離班</span><span><b>${late}</b>遲到</span><span><b>${cnt.leave}</b>請假</span><span><b>${cnt.none}</b>未到</span>`;
   const c=clsInfo()[cur];
-  $('autoInfo').textContent=c&&c.end?cur+' 下課時間 '+c.end+'，還沒離班的學生會由系統自動登記離班（依後台設定）。':'';
+  const ts=slotOf(c,WD());
+  $('autoInfo').textContent=ts&&ts.end?cur+' 今天下課時間 '+ts.end+'，還沒離班的學生會由系統自動登記離班（依後台設定）。':'';
 }
 
 // 點名動作

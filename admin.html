@@ -33,6 +33,12 @@ button{cursor:pointer;border:1px solid var(--line);background:var(--surface);bor
 button.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent);font-weight:600}
 button.small{min-height:32px;padding:3px 10px;font-size:13px}
 button.danger{color:var(--bad);border-color:var(--bad)}
+.daytimes{flex-basis:100%;display:flex;flex-wrap:wrap;gap:8px 18px;background:var(--bg);border-radius:10px;padding:10px 12px}
+.daytimes .dt{display:flex;align-items:center;gap:6px;flex-direction:row;color:var(--ink);font-size:15px}
+.daytimes .dt b{width:1.4em}
+.daytimes .dt.custom b{color:var(--accent)}
+.daytimes input{min-height:36px;padding:4px 6px}
+.daytimes .tip{flex-basis:100%;font-size:13px;color:var(--muted)}
 tr.grp td{font-weight:700;font-size:13px;color:var(--muted);background:var(--bg);letter-spacing:.08em;padding-top:12px}
 .bulkbar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;background:var(--warn-bg);border-radius:10px;padding:8px 12px}
 .bulkbar span{font-weight:600;margin-right:6px}
@@ -205,8 +211,9 @@ code{font-family:var(--num);font-size:13px;overflow-wrap:anywhere}
       <label>下課時間<input type="time" id="clEnd"></label>
       <button class="primary" id="clSave">新增</button>
       <button type="button" id="clCancel" hidden>取消編輯</button>
+      <div class="daytimes" id="clDayTimes" hidden></div>
     </form>
-    <p class="muted">未到提醒依上課日和上課時間計算，沒填的班級不會提醒。</p>
+    <p class="muted">未到提醒依上課日和上課時間計算，沒填的班級不會提醒。某一天時間不同（例如週六早上），在下方那一天改時間即可。</p>
     <div class="row">
       <label>系列<select id="cfGroup"><option value="">全部</option><option>MJ班級</option><option>TJ班級</option><option>國中實力養成班</option><option>國中菁英班</option><option>BM班級</option><option>英檢班</option><option>其他</option></select></label>
       <label>上課日<select id="cfDay"><option value="">全部</option><option value="today">今天有課</option><option>一</option><option>二</option><option>三</option><option>四</option><option>五</option><option>六</option><option>日</option><option value="none">未設定上課日</option></select></label>
@@ -318,6 +325,7 @@ const clsGroup=n=>{const r=CLS_RULES.find(r=>r[1].test(n));return r?r[0]:'其他
 const clsCmp=(a,b)=>(CLS_GROUPS.indexOf(clsGroup(a))-CLS_GROUPS.indexOf(clsGroup(b)))||a.localeCompare(b,'zh-Hant',{numeric:true,sensitivity:'base'});
 // 名單排序：英文名 A→Z，沒有英文名的排在後面依中文排
 const nameCmp=(a,b)=>{const ea=/^[A-Za-z]/.test(a.name),eb=/^[A-Za-z]/.test(b.name);return (eb-ea)||a.name.localeCompare(b.name,'zh-Hant',{numeric:true,sensitivity:'base'})};
+const slotOf=(c,day)=>c&&c.days&&c.days.includes(day)?((c.times&&c.times[day])||{start:c.start,end:c.end}):null;
 const classNames=()=>D.classes.map(c=>c.name);
 // 班級下拉選單依 MJ／TJ／其他 分組
 function fillClassSelect(el,lead){
@@ -349,7 +357,7 @@ function renderToday(){
   let due=0,here=0,gone=0,off=0,miss=0;
   const rowsHtml=D.students.filter(s=>s.status!=='停用'||rec[s.id]).filter(s=>!f||inCls(s,f)).sort(nameCmp).map(s=>{
     const tc=clsOf(s).map(n=>cmap[n]).find(x=>x&&x.days.includes(wd));
-    const r=rec[s.id],c=tc||cmap[clsOf(s)[0]],has=!!tc;
+    const r=rec[s.id],has=!!tc,c=tc?slotOf(tc,wd):null;
     if(!r&&!has&&!showAll&&!leave.has(s.id))return '';
     let pill;
     if(r&&r.out){pill='<span class="pill info">已離班</span>';gone++}
@@ -452,7 +460,7 @@ function renderClasses(){
   $('cfN').textContent=shownCls.length===D.classes.length?'共 '+D.classes.length+' 班':'顯示 '+shownCls.length+' / '+D.classes.length+' 班';
   let lastG='';
   $('clBody').innerHTML=shownCls.map(c=>(clsGroup(c.name)!==lastG?`<tr class="grp"><td colspan="6">${(lastG=clsGroup(c.name))}</td></tr>`:'')+`<tr class="${csel.has(c.name)?'sel':''}"><td><input type="checkbox" data-cpick="${esc(c.name)}" ${csel.has(c.name)?'checked':''} aria-label="選取 ${esc(c.name)}" style="min-height:0"></td><td>${esc(c.name)}</td><td>${esc([...DAYS].filter(d=>c.days.includes(d)).join(' ')||'未設定')}</td>
-    <td class="num">${c.start?esc(c.start)+(c.end?' – '+esc(c.end):''):'未設定'}</td><td class="num">${n[c.name]||0}</td>
+    <td class="num">${c.start?esc(c.start)+(c.end?' – '+esc(c.end):''):'未設定'}${Object.keys(c.times||{}).filter(d=>c.days.includes(d)).sort((a,b)=>DAYS.indexOf(a)-DAYS.indexOf(b)).map(d=>`<br><small>${d}：${esc(c.times[d].start)}${c.times[d].end?' – '+esc(c.times[d].end):''}</small>`).join('')}</td><td class="num">${n[c.name]||0}</td>
     <td class="acts"><button class="small" data-edit="${esc(c.name)}">編輯</button><button class="small" data-del="${esc(c.name)}">刪除</button></td></tr>`).join('')
     ||`<tr><td colspan="6" class="muted">${D.classes.length?'沒有符合篩選條件的班級。':'還沒有班級。'}</td></tr>`;
   const on=shownCls.filter(c=>csel.has(c.name)).length;
@@ -479,9 +487,32 @@ $('ckDel').onclick=()=>{
   fast(()=>{D.classes=D.classes.filter(c=>!names.includes(c.name));D.students=D.students.filter(s=>!(withS&&clsOf(s).every(c=>names.includes(c))));D.students.forEach(s=>{const k=clsOf(s).filter(c=>!names.includes(c));if(k.length){s.classes=k;s.cls=k.join('、')}})},
     'admin.deleteClasses',{names,withStudents:withS},'已刪除 '+names.length+' 個班級'+(withS&&kids.length?'和 '+kids.length+' 位學生':''));
 };
+// 各日時間：勾選的每一天都有自己的時間，預設跟上面的上下課時間一樣；改過的那天會記成「各日時間」
+let dayCustom={};
+function renderDayTimes(){
+  const days=[...$('clDays').querySelectorAll('input:checked')].map(i=>i.value),box=$('clDayTimes');
+  const ds=$('clStart').value,de=$('clEnd').value;
+  box.hidden=!days.length;
+  box.innerHTML=days.map(d=>{const t=dayCustom[d]||{start:ds,end:de};
+    return `<label class="dt${dayCustom[d]?' custom':''}"><b>${d}</b><input type="time" data-dt="${d}" data-k="start" value="${esc(t.start)}"> – <input type="time" data-dt="${d}" data-k="end" value="${esc(t.end)}"></label>`}).join('')+
+    '<span class="tip">藍色的日子使用自己的時間；其他日子跟著上面的上課、下課時間。</span>';
+}
+$('clDayTimes').addEventListener('change',e=>{
+  const d=e.target.dataset.dt;if(!d)return;
+  const cur=dayCustom[d]||{start:$('clStart').value,end:$('clEnd').value};cur[e.target.dataset.k]=e.target.value;
+  dayCustom[d]=cur.start===$('clStart').value&&cur.end===$('clEnd').value?undefined:cur;if(!dayCustom[d])delete dayCustom[d];
+  renderDayTimes();
+});
+$('clDays').addEventListener('change',renderDayTimes);
+['clStart','clEnd'].forEach(id=>$(id).addEventListener('change',()=>{
+  for(const d of Object.keys(dayCustom)){const t=dayCustom[d];if(t.start===$('clStart').value&&t.end===$('clEnd').value)delete dayCustom[d]}
+  renderDayTimes();
+}));
 function setClassForm(c){
   editClass=c||null;$('clName').value=c?c.name:'';$('clStart').value=c?c.start:'';$('clEnd').value=c?c.end:'';
   $('clDays').querySelectorAll('input').forEach(i=>{i.checked=!!c&&c.days.includes(i.value)});
+  dayCustom={};if(c&&c.times)for(const d in c.times)if(c.days.includes(d))dayCustom[d]={start:c.times[d].start,end:c.times[d].end};
+  renderDayTimes();
   $('clTitle').textContent=c?'編輯班級：'+c.name:'新增班級';$('clSave').textContent=c?'儲存':'新增';$('clCancel').hidden=!c;
 }
 $('clCancel').onclick=()=>setClassForm(null);
@@ -496,7 +527,8 @@ $('clBody').onclick=e=>{
 $('clForm').onsubmit=async e=>{
   e.preventDefault();
   const days=[...$('clDays').querySelectorAll('input:checked')].map(i=>i.value).join('');
-  const cls={name:$('clName').value.trim(),days,start:$('clStart').value,end:$('clEnd').value};
+  const special=[...DAYS].filter(d=>days.includes(d)&&dayCustom[d]&&dayCustom[d].start).map(d=>d+' '+dayCustom[d].start+'-'+(dayCustom[d].end||'')).join('；');
+  const cls={name:$('clName').value.trim(),days,start:$('clStart').value,end:$('clEnd').value,special};
   if(await run('admin.saveClass',{cls,orig:editClass?editClass.name:''},editClass?'已儲存':'已新增 '+cls.name))setClassForm(null);
 };
 
