@@ -245,8 +245,18 @@ code{font-family:var(--num);font-size:13px;overflow-wrap:anywhere}
       <label>學生代碼開頭<input id="sePrefix" autocomplete="off"></label>
       <label>管理密碼<input id="seAdmin" autocomplete="off"></label>
       <label>打卡機密碼<input id="seKiosk" autocomplete="off"></label>
+      <label>LIFF 頻道 ID（教務小幫手掃描用，LINE Login 頻道的 Channel ID）<input id="seLiff" inputmode="numeric" autocomplete="off"></label>
+      <label>LIFF ID（例如 1234567890-AbCdEfGh）<input id="seLiffId" autocomplete="off"></label>
       <div><button class="primary">儲存設定</button></div>
     </form>
+    <div class="col">
+      <h2>用教務小幫手掃描的老師</h2>
+      <p class="muted">老師第一次在 LINE 打開掃描頁時會出現在這裡，按「開通」後才能掃描打卡。老師離職時按「停用」。</p>
+      <div class="scroll"><table><thead><tr><th>老師（LINE 名稱）</th><th>申請時間</th><th>狀態</th><th></th></tr></thead><tbody id="teBody"></tbody></table></div>
+      <p class="muted">老師掃描頁網址（貼到 LIFF 的 Endpoint URL）：</p>
+      <code id="scanUrl"></code>
+      <div><button class="small" id="scanCopy">複製</button></div>
+    </div>
     <div class="col">
       <h2>官方 LINE</h2>
       <p class="muted">可以接多個官方 LINE（例如國中部、國小部），共用同一份學生和打卡資料。每個帳號的 Webhook 網址不同，請貼到該帳號在 LINE Developers 的 Webhook URL 欄位。</p>
@@ -562,19 +572,37 @@ $('cdPrint').onclick=()=>window.print();
 function renderSettings(){
   const s=D.settings;
   $('seRemind').value=s['未到提醒分鐘']||'';$('seRescan').value=s['重複掃描間隔分鐘']||'';$('sePrefix').value=s['學生代碼開頭']||'';$('seAuto').value=s['自動離班分鐘']===undefined?'0':s['自動離班分鐘'];
-  $('seAdmin').value=s['管理密碼']||'';$('seKiosk').value=s['打卡機密碼']||'';
+  $('seAdmin').value=s['管理密碼']||'';$('seKiosk').value=s['打卡機密碼']||'';$('seLiff').value=s['LIFF頻道ID']||'';$('seLiffId').value=s['LIFF ID']||'';
+  $('teBody').innerHTML=(D.teachers||[]).map(t=>`<tr><td>${esc(t.name||'（未命名）')}</td><td class="num">${esc(t.at||'')}</td>
+    <td>${t.status==='開通'?'<span class="pill ok">已開通</span>':t.status==='停用'?'<span class="pill none">停用</span>':'<span class="pill warn">待開通</span>'}</td>
+    <td class="acts">${t.status!=='開通'?`<button class="small" data-tok="${esc(t.uid)}">開通</button>`:`<button class="small" data-toff="${esc(t.uid)}">停用</button>`}<button class="small danger" data-tdel="${esc(t.uid)}">移除</button></td></tr>`).join('')
+    ||'<tr><td colspan="4" class="muted">還沒有老師申請。</td></tr>';
+  $('scanUrl').textContent=new URL('scan.html',location.href).href+'?api='+encodeURIComponent(cfg.url);
   if(!acctDirty){accts=(D.accounts||[]).map(a=>Object.assign({},a))}
   renderAccounts();
 }
 $('seForm').onsubmit=async e=>{
   e.preventDefault();
   const settings={'未到提醒分鐘':$('seRemind').value,'重複掃描間隔分鐘':$('seRescan').value,'自動離班分鐘':$('seAuto').value.trim(),'學生代碼開頭':$('sePrefix').value.trim()||'JY',
-    '管理密碼':$('seAdmin').value.trim(),'打卡機密碼':$('seKiosk').value.trim()};
+    '管理密碼':$('seAdmin').value.trim(),'打卡機密碼':$('seKiosk').value.trim(),'LIFF頻道ID':$('seLiff').value.trim(),'LIFF ID':$('seLiffId').value.trim()};
   const old=cfg.pw;   // 用舊密碼送出，成功後才換新密碼
   try{
     const j=await api('admin.saveSettings',{settings});
     cfg.pw=settings['管理密碼'];ses.set('ck-pw',cfg.pw);D=j;render();flash('已儲存設定');
   }catch(err){cfg.pw=old;flash(err.message,true)}
+};
+$('teBody').onclick=e=>{
+  const b=e.target,t=(D.teachers||[]).find(x=>x.uid===(b.dataset.tok||b.dataset.toff||b.dataset.tdel));if(!t)return;
+  if(b.dataset.tok)fast(()=>{t.status='開通'},'admin.teacher',{uid:t.uid,status:'開通'},'已開通 '+(t.name||''));
+  if(b.dataset.toff)fast(()=>{t.status='停用'},'admin.teacher',{uid:t.uid,status:'停用'},'已停用 '+(t.name||''));
+  if(b.dataset.tdel){
+    if(b.dataset.armed)fast(()=>{D.teachers=D.teachers.filter(x=>x!==t)},'admin.teacher',{uid:t.uid,remove:true},'已移除');
+    else{b.dataset.armed='1';b.textContent='再按一次移除';setTimeout(()=>{if(b.isConnected){delete b.dataset.armed;b.textContent='移除'}},3000)}
+  }
+};
+$('scanCopy').onclick=()=>{
+  const t=$('scanUrl').textContent;
+  (navigator.clipboard?navigator.clipboard.writeText(t):Promise.reject()).then(()=>flash('已複製')).catch(()=>{const r=document.createRange();r.selectNodeContents($('scanUrl'));const sel=getSelection();sel.removeAllRanges();sel.addRange(r);flash('請按 Ctrl+C 複製')});
 };
 let accts=[],acctDirty=false;
 function renderAccounts(){
