@@ -271,6 +271,9 @@ code{font-family:var(--num);font-size:13px;overflow-wrap:anywhere}
       <p class="muted">老師掃描頁網址（貼到 LIFF 的 Endpoint URL）：</p>
       <code id="scanUrl"></code>
       <div><button class="small" id="scanCopy">複製</button></div>
+      <p class="muted">小幫手查詢打卡狀況用的金鑰（貼到小幫手的程式裡，不要給學生或家長）：</p>
+      <code id="botKey"></code>
+      <div class="row"><button class="small" id="botCopy">複製</button><button class="small" id="botNew">重新產生</button></div>
     </div>
     <div class="col">
       <h2>官方 LINE</h2>
@@ -622,6 +625,7 @@ function renderSettings(){
     <td class="acts">${t.status!=='開通'?`<button class="small" data-tok="${esc(t.uid)}">開通</button>`:`<button class="small" data-toff="${esc(t.uid)}">停用</button>`}<button class="small danger" data-tdel="${esc(t.uid)}">移除</button></td></tr>`).join('')
     ||'<tr><td colspan="4" class="muted">還沒有老師申請。</td></tr>';
   $('scanUrl').textContent=new URL('scan.html',location.href).href+'?api='+encodeURIComponent(cfg.url);
+  $('botKey').textContent=s['小幫手金鑰']||'（尚未產生，請按「重新產生」）';
   if(!acctDirty){accts=(D.accounts||[]).map(a=>Object.assign({},a))}
   renderAccounts();
 }
@@ -643,6 +647,15 @@ $('teBody').onclick=e=>{
     if(b.dataset.armed)fast(()=>{D.teachers=D.teachers.filter(x=>x!==t)},'admin.teacher',{uid:t.uid,remove:true},'已移除');
     else{b.dataset.armed='1';b.textContent='再按一次移除';setTimeout(()=>{if(b.isConnected){delete b.dataset.armed;b.textContent='移除'}},3000)}
   }
+};
+$('botCopy').onclick=()=>{const t=D.settings['小幫手金鑰']||'';if(!t)return flash('請先按「重新產生」',true);
+  (navigator.clipboard?navigator.clipboard.writeText(t):Promise.reject()).then(()=>flash('已複製')).catch(()=>{const r=document.createRange();r.selectNodeContents($('botKey'));const sel=getSelection();sel.removeAllRanges();sel.addRange(r);flash('請按 Ctrl+C 複製')})};
+$('botNew').onclick=async e=>{
+  const b=e.currentTarget;
+  if(D.settings['小幫手金鑰']&&!b.dataset.armed){b.dataset.armed='1';b.textContent='再按一次（舊金鑰會失效）';setTimeout(()=>{delete b.dataset.armed;b.textContent='重新產生'},3000);return}
+  delete b.dataset.armed;b.textContent='重新產生';
+  const a=new Uint8Array(18);crypto.getRandomValues(a);const k=[...a].map(x=>'ABCDEFGHJKMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789'[x%55]).join('');
+  try{const j=await api('admin.saveSettings',{settings:Object.assign({},D.settings,{'小幫手金鑰':k})});D=j;render();flash('已產生新金鑰')}catch(err){flash(err.message,true)}
 };
 $('scanCopy').onclick=()=>{
   const t=$('scanUrl').textContent;
