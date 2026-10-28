@@ -84,6 +84,8 @@ h2{font-size:18px;margin:0}
 dialog{border:1px solid var(--line);border-radius:16px;background:var(--surface);color:var(--ink);padding:20px;width:min(600px,calc(100vw - 32px));max-height:85vh}
 dialog::backdrop{background:rgba(0,0,0,.45)}
 .dlg-head{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:12px}
+.pickbar{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:10px;color:var(--muted);font-size:15px}
+.pickbar button{min-height:40px;padding:6px 14px;font-size:15px}
 .pick{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px}
 .pick button{min-height:44px;padding:8px 16px}
 .pick button[aria-pressed="true"]{background:var(--ink);color:var(--bg);border-color:var(--ink)}
@@ -144,6 +146,7 @@ dialog{max-height:92vh;overflow:auto}
 
 <dialog id="dlg">
   <div class="dlg-head"><h2>忘記帶卡：選班級，再點名字</h2><button id="dlgClose">關閉</button></div>
+  <div class="pickbar"><span id="pickNote"></span><button id="pickAll" type="button">顯示全部班級</button></div>
   <div class="pick" id="pick"></div>
   <div class="names" id="names"></div>
 </dialog>
@@ -213,8 +216,8 @@ async function sync(){
   try{
     const j=await api('kiosk.sync',{events:sending});
     queue=queue.slice(sending.length);
-    roster=j.students;rescan=j.rescan;
-    LS.set('ck-roster',roster);LS.set('ck-rescan',rescan);
+    roster=j.students;rescan=j.rescan;clsInfo=j.classes||clsInfo;
+    LS.set('ck-roster',roster);LS.set('ck-rescan',rescan);LS.set('ck-classes',clsInfo);
     if(j.date===ymd()){
       day=j.date;recs={};
       j.records.forEach(r=>{recs[r.id]={in:toMs(r.in),out:toMs(r.out),inManual:r.inHow==='手動',outManual:r.outHow==='手動'}});
@@ -435,13 +438,26 @@ $('flip').onclick=()=>{facing=facing==='user'?'environment':'user';if(stream)sta
 document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'){if(stream)wake();sync()}});
 
 // 忘記帶卡
-const dlg=$('dlg');let curCls='';
+const dlg=$('dlg');let curCls='',pickAll=false,clsInfo=LS.get('ck-classes',[]);
+// 今天有課的班：依後台班級的上課日；排序時，正在上課或最接近的班排前面
+function todaySlot(c){const wd='日一二三四五六'[new Date().getDay()];if(!c||!String(c.days||'').includes(wd))return null;return (c.times&&c.times[wd])||{start:c.start,end:c.end}}
 // 名單排序：英文名 A→Z，沒有英文名的排在後面依中文排
 const nameCmp=(a,b)=>{const ea=/^[A-Za-z]/.test(a.name),eb=/^[A-Za-z]/.test(b.name);return (eb-ea)||a.name.localeCompare(b.name,'zh-Hant',{numeric:true,sensitivity:'base'})};
 function renderPick(){
   const R=[/^\s*MJ/i,/^\s*TJ/i,/實力養成/,/菁英/,/^\s*BM/i,/英檢|GEPT/i],grp=n=>{const i=R.findIndex(r=>r.test(n));return i<0?R.length:i};
-  const classes=[...new Set(roster.flatMap(s=>s.classes||[s.cls]))].sort((a,b)=>(grp(a)-grp(b))||a.localeCompare(b,'zh-Hant',{numeric:true}));
-  if(!classes.includes(curCls))curCls=classes[0]||'';
+  const all=[...new Set(roster.flatMap(s=>s.classes||[s.cls]))].sort((a,b)=>(grp(a)-grp(b))||a.localeCompare(b,'zh-Hant',{numeric:true}));
+  const info={};clsInfo.forEach(c=>info[c.name]=c);
+  const today=all.filter(c=>todaySlot(info[c]));
+  const showAll=pickAll||!today.length,classes=showAll?all:today;
+  if(!classes.includes(curCls)){
+    // 預設選「正在上課」的班，沒有就選最快要上課的班
+    const now=new Date(),hm=String(now.getHours()).padStart(2,'0')+':'+String(now.getMinutes()).padStart(2,'0');
+    const cur=today.find(c=>{const t=todaySlot(info[c]);return t.start&&t.start<=hm&&(!t.end||hm<t.end)})||
+      today.filter(c=>{const t=todaySlot(info[c]);return t.start&&t.start>hm}).sort((a,b)=>todaySlot(info[a]).start.localeCompare(todaySlot(info[b]).start))[0];
+    curCls=(cur&&classes.includes(cur))?cur:classes[0]||'';
+  }
+  $('pickNote').textContent=showAll?(today.length?'顯示全部班級':'今天沒有排課的班級，顯示全部班級'):'今天上課的班級';
+  $('pickAll').hidden=!today.length;$('pickAll').textContent=showAll?'只看今天的班':'顯示全部班級';
   const p=$('pick');p.textContent='';
   classes.forEach(c=>{
     const b=document.createElement('button');b.textContent=c;b.setAttribute('aria-pressed',c===curCls);
@@ -453,7 +469,8 @@ function renderPick(){
     b.onclick=()=>{dlg.close();punch(s.id,true)};n.appendChild(b);
   });
 }
-$('forgot').onclick=()=>{renderPick();dlg.showModal()};
+$('forgot').onclick=()=>{pickAll=false;curCls='';renderPick();dlg.showModal()};
+$('pickAll').onclick=()=>{pickAll=!pickAll;renderPick()};
 $('dlgClose').onclick=()=>dlg.close();
 
 // 連線設定
