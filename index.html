@@ -298,9 +298,11 @@ function pickVoice(lang){
 function speak(parts){
   if(!voiceOn||!window.speechSynthesis||!parts||!parts.length)return;
   try{
-    speechSynthesis.cancel();
+    // Android Chrome：剛 cancel 馬上 speak 有時會整段沒聲音，所以只有在正在唸的時候才取消，並稍等一下再唸
+    const busy=speechSynthesis.speaking||speechSynthesis.pending;
+    if(busy)speechSynthesis.cancel();
     if(speechSynthesis.paused)speechSynthesis.resume();   // 有些平板放久了語音會卡在暫停
-    parts.forEach(([text,lang])=>{
+    setTimeout(()=>parts.forEach(([text,lang])=>{
       if(!text)return;
       const mk=useVoice=>{
         const u=new SpeechSynthesisUtterance(text);
@@ -311,14 +313,15 @@ function speak(parts){
         return u;
       };
       speechSynthesis.speak(mk(true));
-    });
+    }),busy?120:0);
   }catch(e){}
 }
 // 任何一次點螢幕都順便喚醒音效和語音（平板重新整理、休眠後需要使用者點一下才能發聲）
 function unlockAudio(){
   try{actx=actx||new (window.AudioContext||window.webkitAudioContext)();if(actx.state!=='running')actx.resume()}catch(e){}
-  try{if(window.speechSynthesis&&!speechSynthesis.speaking){const u=new SpeechSynthesisUtterance(' ');u.volume=0;speechSynthesis.speak(u)}}catch(e){}
+  try{if(window.speechSynthesis&&!speechSynthesis.speaking&&!unlocked){unlocked=true;const u=new SpeechSynthesisUtterance(' ');u.volume=0;speechSynthesis.speak(u)}}catch(e){}
 }
+let unlocked=false;
 document.addEventListener('pointerdown',unlockAudio,{passive:true});
 // 設定視窗裡的語音選單：列出這台平板有的英文、中文聲音
 function fillVoices(){
