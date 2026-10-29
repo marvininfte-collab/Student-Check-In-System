@@ -262,6 +262,7 @@ function renderList(){
 let actx=null;
 function tone(freqs,dur){
   if(!actx)return;
+  try{if(actx.state!=='running')actx.resume()}catch(e){}   // 平板休眠或切換 App 後，音效會被暫停，這裡自動恢復
   try{freqs.forEach((f,i)=>{
     const o=actx.createOscillator(),g=actx.createGain(),t=actx.currentTime+i*dur;
     o.frequency.value=f;o.connect(g);g.connect(actx.destination);
@@ -298,15 +299,27 @@ function speak(parts){
   if(!voiceOn||!window.speechSynthesis||!parts||!parts.length)return;
   try{
     speechSynthesis.cancel();
+    if(speechSynthesis.paused)speechSynthesis.resume();   // 有些平板放久了語音會卡在暫停
     parts.forEach(([text,lang])=>{
       if(!text)return;
-      const u=new SpeechSynthesisUtterance(text);
-      u.lang=lang==='en'?'en-US':'zh-TW';const v=pickVoice(lang);if(v)u.voice=v;
-      u.rate=lang==='en'?0.95:1.05;u.volume=1;
-      speechSynthesis.speak(u);
+      const mk=useVoice=>{
+        const u=new SpeechSynthesisUtterance(text);
+        u.lang=lang==='en'?'en-US':'zh-TW';const v=useVoice&&pickVoice(lang);if(v)u.voice=v;
+        u.rate=lang==='en'?0.95:1.05;u.volume=1;
+        // 選的聲音不能用（例如需要網路的線上語音）時，改用平板預設的聲音再唸一次
+        if(useVoice)u.onerror=e=>{if(e.error!=='interrupted'&&e.error!=='canceled')speechSynthesis.speak(mk(false))};
+        return u;
+      };
+      speechSynthesis.speak(mk(true));
     });
   }catch(e){}
 }
+// 任何一次點螢幕都順便喚醒音效和語音（平板重新整理、休眠後需要使用者點一下才能發聲）
+function unlockAudio(){
+  try{actx=actx||new (window.AudioContext||window.webkitAudioContext)();if(actx.state!=='running')actx.resume()}catch(e){}
+  try{if(window.speechSynthesis&&!speechSynthesis.speaking){const u=new SpeechSynthesisUtterance(' ');u.volume=0;speechSynthesis.speak(u)}}catch(e){}
+}
+document.addEventListener('pointerdown',unlockAudio,{passive:true});
 // 設定視窗裡的語音選單：列出這台平板有的英文、中文聲音
 function fillVoices(){
   const vs=allVoices();
