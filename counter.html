@@ -107,6 +107,18 @@ dialog::backdrop{background:rgba(0,0,0,.45)}
 .kid.leave{background:transparent;border-style:dashed} .kid.leave b{color:var(--muted)}
 .tag{display:inline-block;font-size:12px;font-weight:700;border-radius:6px;padding:0 6px;margin-left:4px;color:var(--warn);background:var(--warn-bg)}
 .auto{font-size:13px;color:var(--muted)}
+#alert{width:min(620px,calc(100vw - 32px));border:3px solid var(--bad);padding:0}
+#alert .ah{display:flex;justify-content:space-between;align-items:center;gap:10px;background:var(--bad-bg);color:var(--bad);padding:14px 20px}
+#alert .ah h2{margin:0;font-size:22px}
+#alert .ab{padding:6px 20px 4px;max-height:60vh;overflow:auto}
+#alert .acls{display:flex;justify-content:space-between;align-items:baseline;gap:10px;margin:12px 0 6px;font-weight:700;font-size:18px}
+#alert .acls small{color:var(--muted);font-weight:400;font-size:14px;font-family:var(--num)}
+#alert .arow{display:flex;align-items:center;gap:8px;padding:8px 0;border-top:1px solid var(--line)}
+#alert .arow b{flex:1;font-size:20px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#alert .arow button{min-height:46px;font-weight:600}
+#alert .arow .ain{background:var(--warn-bg);color:var(--warn);border-color:transparent}
+#alert .af{display:flex;gap:10px;justify-content:flex-end;padding:12px 20px 18px}
+#alert .af button{min-height:52px;font-size:17px}
 </style>
 </head>
 <body>
@@ -138,6 +150,12 @@ dialog::backdrop{background:rgba(0,0,0,.45)}
 <main class="grid" id="grid"></main>
 <p class="empty" id="none" hidden>這個班級沒有學生。</p>
 <p class="auto" id="autoInfo"></p>
+
+<dialog id="alert" aria-labelledby="alertTitle">
+  <div class="ah"><h2 id="alertTitle">上課時間到了，還有學生未到</h2></div>
+  <div class="ab" id="alertBody"></div>
+  <div class="af"><button class="primary" id="alertOk">知道了</button></div>
+</dialog>
 
 <div class="toast" id="toast" hidden role="status"><span id="toastText"></span><button id="undo">復原</button></div>
 
@@ -209,7 +227,7 @@ async function sync(){
   try{
     const j=await api('kiosk.sync',{events:sending});
     queue=queue.slice(sending.length);
-    roster=j.students;classes=j.classes||[];
+    roster=j.students;classes=j.classes||[];if(j.alertMin!==undefined){alertMin=j.alertMin;LS.set('ct-alertmin',alertMin)}
     LS.set('ct-roster',roster);LS.set('ct-classes',classes);
     if(j.date===ymd()){
       day=j.date;recs={};leaves={};
@@ -233,6 +251,7 @@ function renderClock(){
   $('date').textContent=(d.getMonth()+1)+' 月 '+d.getDate()+' 日（'+w+'）';
   $('clock').textContent=pad(d.getHours())+':'+pad(d.getMinutes());
   if(ymd()!==day){day=ymd();recs={};leaves={};keep();render()}
+  checkAlert();
 }
 
 // 「Amy 林語晨」拆成英文名和中文名兩行；沒有英文名就只顯示中文
@@ -366,6 +385,55 @@ function openAct(s,label,evs){
 $('actDo').onclick=()=>{act.close();if(actEvs){push(actEvs);toast('已修改',null)}};
 $('actClose').onclick=()=>act.close();
 $('q').oninput=render;
+
+// 未到提醒：上課後 N 分鐘（後台設定），跳出這班還沒到、也沒請假的學生
+let alertMin=LS.get('ct-alertmin','10'),actx=null;
+let alerted=LS.get('ct-alerted',{day:'',done:{}});
+const addMinHM=(t,n)=>{const p=t.split(':'),m=Math.min(+p[0]*60+ +p[1]+n,1439);return pad(Math.floor(m/60))+':'+pad(m%60)};
+function dueAbsent(){
+  const raw=String(alertMin==null?'':alertMin).trim();
+  if(raw===''||isNaN(+raw)||!roster.length)return [];
+  if(alerted.day!==day)alerted={day,done:{}};
+  const now=hm(Date.now()),wd=WD(),out=[];
+  classes.forEach(c=>{
+    const t=slotOf(c,wd);if(!t||!t.start||alerted.done[c.name])return;
+    if(now<addMinHM(t.start,+raw)||(t.end&&now>=t.end))return;
+    const kids=roster.filter(s=>clsOf(s).includes(c.name)&&state(s.id)==='none').sort(nameCmp);
+    if(kids.length)out.push({c,t,kids});
+  });
+  return out;
+}
+function beep(){
+  try{actx=actx||new (window.AudioContext||window.webkitAudioContext)();if(actx.state!=='running')actx.resume();
+    [660,880,660].forEach((f,i)=>{const o=actx.createOscillator(),g=actx.createGain(),t=actx.currentTime+i*.22;o.frequency.value=f;o.connect(g);g.connect(actx.destination);g.gain.setValueAtTime(.25,t);g.gain.exponentialRampToValueAtTime(.001,t+.2);o.start(t);o.stop(t+.2)})}catch(e){}
+  if(navigator.vibrate)navigator.vibrate([200,100,200]);
+}
+document.addEventListener('pointerdown',()=>{try{actx=actx||new (window.AudioContext||window.webkitAudioContext)();if(actx.state!=='running')actx.resume()}catch(e){}},{passive:true});
+let alertShown=[];
+function checkAlert(){
+  if($('setup').open)return;
+  const list=dueAbsent(),dlgA=$('alert');
+  if(!list.length){if(dlgA.open)dlgA.close();alertShown=[];return}
+  const sig=list.map(x=>x.c.name+':'+x.kids.map(k=>k.id).join(',')).join('|');
+  const fresh=list.some(x=>!alertShown.includes(x.c.name));
+  if(dlgA.open&&dlgA.dataset.sig===sig)return;
+  dlgA.dataset.sig=sig;
+  $('alertBody').innerHTML=list.map(x=>`<div class="acls"><span>${esc(x.c.name)}　未到 ${x.kids.length} 人</span><small>${x.t.start} 上課</small></div>`+
+    x.kids.map(k=>`<div class="arow"><b>${esc(k.name)}</b><button class="ain" data-ain="${esc(k.id)}">到班（遲到）</button><button data-aleave="${esc(k.id)}">請假</button></div>`).join('')).join('');
+  if(!dlgA.open){if(act.open)act.close();dlgA.showModal()}
+  if(fresh)beep();
+  alertShown=list.map(x=>x.c.name);
+}
+function esc(t){return String(t).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]))}
+$('alertBody').onclick=e=>{
+  const b=e.target.closest('button');if(!b)return;
+  const id=b.dataset.ain||b.dataset.aleave,s=byId()[id];if(!s)return;
+  if(b.dataset.ain){push([{id,type:'in',manual:true,how:'櫃檯',late:true}]);toast(s.name+' 到班 '+hm(Date.now())+'（遲到）',[{id,type:'undoIn'}])}
+  else{push([{id,type:'leave'}]);toast(s.name+' 已登記請假',[{id,type:'unleave'}])}
+  checkAlert();
+};
+$('alertOk').onclick=()=>{alertShown.forEach(n=>alerted.done[n]=true);LS.set('ct-alerted',alerted);$('alert').close();alertShown=[]};
+$('alert').addEventListener('cancel',e=>{e.preventDefault();$('alertOk').click()});
 
 // 連線設定
 const setup=$('setup');

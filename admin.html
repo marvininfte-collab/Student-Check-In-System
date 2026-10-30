@@ -257,6 +257,7 @@ code{font-family:var(--num);font-size:13px;overflow-wrap:anywhere}
       <label>未到提醒：上課後幾分鐘還沒打卡就通知家長<input type="number" min="0" id="seRemind"></label>
       <label>重複掃描間隔：到班後幾分鐘內再掃不算離班<input type="number" min="0" id="seRescan"></label>
       <label>自動離班：下課後幾分鐘，還沒離班的學生自動登記離班（0＝下課時間；空白＝不使用）<input type="number" min="0" id="seAuto"></label>
+      <label>櫃檯平板未到提醒：上課後幾分鐘，在櫃檯點名頁跳出未到名單（空白＝不使用）<input type="number" min="0" id="seAlert"></label>
       <label>學生代碼開頭<input id="sePrefix" autocomplete="off"></label>
       <label>管理密碼<input id="seAdmin" autocomplete="off"></label>
       <label>打卡機密碼<input id="seKiosk" autocomplete="off"></label>
@@ -618,7 +619,7 @@ $('cdPrint').onclick=()=>{
 /* 設定 */
 function renderSettings(){
   const s=D.settings;
-  $('seRemind').value=s['未到提醒分鐘']||'';$('seRescan').value=s['重複掃描間隔分鐘']||'';$('sePrefix').value=s['學生代碼開頭']||'';$('seAuto').value=s['自動離班分鐘']===undefined?'0':s['自動離班分鐘'];
+  $('seRemind').value=s['未到提醒分鐘']||'';$('seRescan').value=s['重複掃描間隔分鐘']||'';$('sePrefix').value=s['學生代碼開頭']||'';$('seAuto').value=s['自動離班分鐘']===undefined?'0':s['自動離班分鐘'];$('seAlert').value=s['櫃檯提醒分鐘']===undefined?'10':s['櫃檯提醒分鐘'];
   $('seAdmin').value=s['管理密碼']||'';$('seKiosk').value=s['打卡機密碼']||'';$('seLiff').value=s['LIFF頻道ID']||'';$('seLiffId').value=s['LIFF ID']||'';
   $('teBody').innerHTML=(D.teachers||[]).map(t=>`<tr><td>${esc(t.name||'（未命名）')}</td><td class="num">${esc(t.at||'')}</td>
     <td>${t.status==='開通'?'<span class="pill ok">已開通</span>':t.status==='停用'?'<span class="pill none">停用</span>':'<span class="pill warn">待開通</span>'}</td>
@@ -631,7 +632,7 @@ function renderSettings(){
 }
 $('seForm').onsubmit=async e=>{
   e.preventDefault();
-  const settings={'未到提醒分鐘':$('seRemind').value,'重複掃描間隔分鐘':$('seRescan').value,'自動離班分鐘':$('seAuto').value.trim(),'學生代碼開頭':$('sePrefix').value.trim()||'JY',
+  const settings={'未到提醒分鐘':$('seRemind').value,'重複掃描間隔分鐘':$('seRescan').value,'自動離班分鐘':$('seAuto').value.trim(),'櫃檯提醒分鐘':$('seAlert').value.trim(),'學生代碼開頭':$('sePrefix').value.trim()||'JY',
     '管理密碼':$('seAdmin').value.trim(),'打卡機密碼':$('seKiosk').value.trim(),'LIFF頻道ID':$('seLiff').value.trim(),'LIFF ID':$('seLiffId').value.trim()};
   const old=cfg.pw;   // 用舊密碼送出，成功後才換新密碼
   try{
