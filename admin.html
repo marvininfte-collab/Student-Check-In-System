@@ -179,6 +179,7 @@ code{font-family:var(--num);font-size:13px;overflow-wrap:anywhere}
       <label>日期<input type="date" id="tdDate"></label>
       <label>班級<select id="tdCls"></select></label>
       <label style="flex-direction:row;align-items:center;gap:6px;min-height:40px;color:var(--ink);font-size:15px"><input type="checkbox" id="tdAll" style="min-height:0">顯示當天沒課的班級</label>
+      <label style="flex-direction:row;align-items:center;gap:6px;min-height:40px;color:var(--ink);font-size:15px"><input type="checkbox" id="tdForgot" style="min-height:0">只看忘記帶卡</label>
       <button id="tdReload">重新整理</button>
     </div>
     <div class="stats" id="tdStats"></div>
@@ -382,11 +383,14 @@ function renderToday(){
   const rec={},leave=new Set(D.leaves),cmap={};
   D.records.forEach(r=>rec[r.id]=r);D.classes.forEach(c=>cmap[c.name]=c);
   const wd=weekday(D.date),remind=Number(D.settings['未到提醒分鐘'])||0;
-  const f=$('tdCls').value,showAll=$('tdAll').checked;
+  const f=$('tdCls').value,showAll=$('tdAll').checked,forgot=$('tdForgot').checked;
+  const isForgot=r=>!!r&&(r.inHow==='手動'||r.outHow==='手動');let nForgot=0;
   let due=0,here=0,gone=0,off=0,miss=0;
   const rowsHtml=D.students.filter(s=>s.status!=='停用'||rec[s.id]).filter(s=>!f||inCls(s,f)).sort(nameCmp).map(s=>{
     const tc=clsOf(s).map(n=>cmap[n]).find(x=>x&&x.days.includes(wd));
     const r=rec[s.id],has=!!tc,c=tc?slotOf(tc,wd):null;
+    if(isForgot(r))nForgot++;
+    if(forgot&&!isForgot(r))return '';
     if(!r&&!has&&!showAll&&!leave.has(s.id))return '';
     let pill;
     if(r&&r.out){pill='<span class="pill info">已離班</span>';gone++}
@@ -397,15 +401,15 @@ function renderToday(){
     else{pill='<span class="pill warn">未到</span>';miss++}
     if(has||r)due++;
     const late=r&&r.in&&(r.note==='遲到'||(c&&c.start&&r.in>c.start))?' <span class="pill warn">遲到</span>':'';
-    const how=(t,h)=>t?`<span class="num">${esc(t)}</span>${h&&h!=='掃描'?` <span class="pill none">${esc(h)}</span>`:''}`:'<span class="muted">—</span>';
+    const how=(t,h)=>t?`<span class="num">${esc(t)}</span>${h&&h!=='掃描'?(h==='手動'?' <span class="pill warn">忘記帶卡</span>':` <span class="pill none">${esc(h)}</span>`):''}`:'<span class="muted">—</span>';
     return `<tr><td>${esc(s.name)}</td><td>${esc(s.cls)}</td><td>${how(r&&r.in,r&&r.inHow)}${late}</td><td>${how(r&&r.out,r&&r.outHow)}</td><td>${pill}</td>
       <td><input type="checkbox" data-leave="${esc(s.id)}" ${leave.has(s.id)?'checked':''} aria-label="${esc(s.name)} 請假" style="min-height:0"></td></tr>`;
   }).join('');
-  $('tdBody').innerHTML=rowsHtml||'<tr><td colspan="6" class="muted">這一天沒有應到的學生，也沒有打卡紀錄。</td></tr>';
-  $('tdStats').innerHTML=`<span><b>${due}</b>應到</span><span><b>${here}</b>在班</span><span><b>${gone}</b>已離班</span><span><b>${miss}</b>未到</span><span><b>${off}</b>請假</span>`;
+  $('tdBody').innerHTML=rowsHtml||(forgot?'<tr><td colspan="6" class="muted">這一天沒有人忘記帶卡。</td></tr>':'<tr><td colspan="6" class="muted">這一天沒有應到的學生，也沒有打卡紀錄。</td></tr>');
+  $('tdStats').innerHTML=`<span><b>${due}</b>應到</span><span><b>${here}</b>在班</span><span><b>${gone}</b>已離班</span><span><b>${miss}</b>未到</span><span><b>${off}</b>請假</span><span><b>${nForgot}</b>忘記帶卡</span>`;
 }
 $('tdBody').onchange=e=>{const id=e.target.dataset.leave,on=e.target.checked;if(id)fast(()=>{D.leaves=D.leaves.filter(x=>x!==id);if(on)D.leaves.push(id)},'admin.leave',{id,on},on?'已登記請假':'已取消請假')};
-$('tdCls').onchange=renderToday;$('tdAll').onchange=renderToday;
+$('tdCls').onchange=renderToday;$('tdAll').onchange=renderToday;$('tdForgot').onchange=renderToday;
 $('tdDate').onchange=async()=>{if(!$('tdDate').value)return;try{D=await api('admin.load',{date:$('tdDate').value});render()}catch(e){flash(e.message,true)}};
 $('tdReload').onclick=()=>run('admin.load',{},'已更新');
 
