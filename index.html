@@ -345,10 +345,11 @@ function splitName(name){
   const m=String(name).trim().match(/^([A-Za-z][A-Za-z0-9.'’\- ]*?)\s*([\u3400-\u9fff].*)$/);
   return m?[m[1].trim(),m[2].trim()]:(/^[A-Za-z]/.test(name)?[String(name).trim(),'']:['',String(name).trim()]);
 }
-function sayFor(s,kind){
+function sayFor(s,kind,manual){
   if(kind==='again')return [['重複刷卡','zh']];
   const [en,zh]=splitName(s.name),nm=(en||'').replace(/\.[A-Za-z]$/,'');   // Oliver.L 唸成 Oliver
   const who=nm?[nm,'en']:[zh,'zh'];
+  if(manual)return [who,['忘記帶卡','zh']];   // 用「忘記帶卡」打卡：唸「Allen，忘記帶卡」
   return [who,[kind==='in'?'已到班':'已離班','zh']];
 }
 
@@ -359,11 +360,11 @@ function punch(id,manual){
   let ev=null;
   if(!r.in&&!r.out){
     ev={id,type:'in',t:now,manual:!!manual};
-    show('ok','到班打卡成功',s.name,(s.today||s.cls)+'・'+hm(now)+' 到班',sayFor(s,'in'));
+    show('ok','到班打卡成功',s.name,(s.today||s.cls)+'・'+hm(now)+' 到班',sayFor(s,'in',manual));
   }else if(!r.out){
     if(now-r.in<rescan*60000){show('warn','已經打過卡',s.name,hm(r.in)+' 到班',sayFor(s,'again'));return}
     ev={id,type:'out',t:now,manual:!!manual};
-    show('bye','下課打卡成功',s.name,hm(now)+' 離班，再見',sayFor(s,'out'));
+    show('bye','下課打卡成功',s.name,hm(now)+' 離班，再見',sayFor(s,'out',manual));
   }else{
     show('warn','今天已完成打卡',s.name,(r.in?hm(r.in)+' 到班・':'')+hm(r.out)+' 離班',sayFor(s,'again'));return;
   }
